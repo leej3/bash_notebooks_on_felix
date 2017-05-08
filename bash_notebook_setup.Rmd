@@ -1,0 +1,173 @@
+---
+title: "bash notebooks"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=FALSE)
+```
+
+### Summary of setup:
+
+Core setup: a jupyter notebook accessed on the local file browser. This notebook has access to a bash kernel running on felix. The kernel is installed using conda.
+
+Tools used: conda for environment management, jupyter, jupyter bash kernel, git, nbdime for notebook diffing, tmux for persistent sessions.
+
+### Prerequisites
+
++ Add a directory for your conda environments in your data directory on hpc in accordance with the instructions found [here](https://hpc.nih.gov/docs/python.html). This means that as you install more software you don't accidentally fill your home directory.
+
+On felix:
+```{bash}
+mkdir /data/$USER/python/envs
+
+conda config --add envs_dirs $ANACONDA_HOME/envs
+conda config --add envs_dirs /home/$USER/.conda/envs
+conda config --add envs_dirs /data/$USER/python/envs
+
+```
+
+
++ git on hpc. For this, conda and alias works well. (you could instead use module load git)
+
+On felix:
+
+```{bash}
+conda create --name gitenv
+source activate gitenv
+conda install git
+echo "alias git=/data/$USER/python/envs/gitenv/bin/git" >> ~/.bashrc
+```
+
++ ssh keys configured:
+
+On local computer add the following to ~/.ssh/config:
+```{bash}
+ForwardAgent yes
+ForwardX11 yes
+Host felix
+	HostName felix.nimh.nih.gov
+	User rodgersleejg
+	IdentityFile ~/.ssh/nih_ssh_key
+Host helix
+	HostName helix.nih.gov
+	User rodgersleejg
+	IdentityFile ~/.ssh/nih_ssh_key
+```
+
+On command line on local computer:
+
+```{bash}
+cd ~/.ssh
+ssh-keygen -f nih_ssh_key
+scp nih_ssh_key.pub $USER@helix.nih.gov:~/.ssh/
+```
+
+ssh to helix or felix and type
+```{bash}
+cd ~/.ssh
+cat nih_ssh_key.pub >> authorized_keys
+```
+
+On local machine:
+
+```{bash}
+ssh-add nih_ssh_key
+<!-- to check it worked -->
+ssh-add -l
+```
+
+
+
+
++ jupyter notebook password set. This only needs to be set on a user basis so it doesn't matter what environment we use to run the command. We'll used one of the pre-installed environments
+
+```{bash}
+module load Anaconda
+source activate py3.5
+jupyter notebook password 
+```
+
+
+
+### Steps to a working setup:
+
++ Choose a project name and use this for the steps below.
++ On felix, create a tmux session, project directory and a conda environment with py3, jupyter, nbdime (configure) and pip installed bash_kernel (configure).
++ Pick a port number and run a jupyter notebook, with a password in the tmux session 
++ Setup an alias locally (the project name) that specifies port (optionally include a port for nbdiff-web), opens ssh with port forwarding, attaches to tmux session, and opens browser at port.
+
+
+
+##### tmux session setup
+
+```{bash}
+proj="demo_proj"
+tmux new -s $proj # this session is actually only required for running the notebook
+mkdir /data/$USER/$proj
+cd /data/$USER/$proj
+conda create --name $proj python=3 jupyter nbdime
+source activate $proj
+pip install bash_kernel
+python -m bash_kernel.install
+pip install nbdime
+nbdime config-git --enable --global
+```
+
+##### Running the notebook server
+
+```{bash running_a_notebook_session}
+jupyter notebook --no-browser --port=9018
+```
+
+##### The local alias:
+
+```{bash}
+demo_proj(){
+    port_num=9018
+    project="demo_proj"
+    
+    port_num2=$((port_num + 1))
+    ssh -t -L $port_num:localhost:$port_num -L $port_num2:localhost:$port_num2 felix 'module load tmux;tmux attach -t "'"$project"'"'
+    open http://localhost:$port_num
+}
+```
+
+### General use
+
+This notebook server/tmux session will have to be restarted when felix is restarted. This would consist of restarting the tmux session and then within the session restarting the notebook:
+
+```{bash}
+proj="demo_proj"
+tmux new -s $proj
+
+########
+# in the tmux session setup the server:
+jupyter notebook --no-browser --port=9018
+```
+
+It might be a good idea to stop the server when not using it:
+`Ctrl+Z` will stop the server, `fg` will resume it.
+
+#### other points
+
+Notebook extensions are nice: `conda install -c conda-forge jupyter_contrib_nbextensions`
+
+
+
+#### miscellaneous troubleshooting
+bash_kernel installation issues: at one point was using the wrong
+pip. Activated conda environment again and this was fixed.
+
+
+
+For login to notebook use this?
+`http://blog.runsheng.xyz/start-a-ipython-notebook-server-with-password-login.html`
+
+Diffing works somewhat but is not great. Keeping cells small is the best way of getting useful diffs as the work develops.
+
+Editor - with sublime mode! - terminal, and qtconsole available from the notebook interface.
+
+Things to do for this overall approach:
+Work out how to automatically convert the notebook to a bash script instead of a python script.
+Encapsulate with a singularity/docker container.
