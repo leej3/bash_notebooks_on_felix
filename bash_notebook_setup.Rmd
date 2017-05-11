@@ -85,6 +85,7 @@ ssh-add -l
 ```{bash}
 module load Anaconda
 source activate py3.5
+jupyter notebook --generate-config ## if you haven't previously configured notebook settings
 jupyter notebook password 
 ```
 
